@@ -1,5 +1,9 @@
 package com.pi4j.gpio.extension.pcf;
 
+import java.io.IOException;
+
+import org.apache.log4j.Logger;
+
 import com.pi4j.gpio.helpers.GpioHelpers;
 import com.pi4j.io.gpio.GpioProvider;
 import com.pi4j.io.gpio.GpioProviderBase;
@@ -11,9 +15,6 @@ import com.pi4j.io.i2c.I2CBus;
 import com.pi4j.io.i2c.I2CDevice;
 import com.pi4j.io.i2c.I2CFactory;
 import com.pi4j.io.i2c.I2CFactory.UnsupportedBusNumberException;
-import org.apache.log4j.Logger;
-
-import java.io.IOException;
 
 public class PCFAnalogShortGpioProvider extends GpioProviderBase implements GpioProvider {
 
@@ -109,7 +110,6 @@ public class PCFAnalogShortGpioProvider extends GpioProviderBase implements Gpio
 
     @Override
     public double getValue(Pin pin) {
-        // return (cachedValue[pin.getAddress()] / 100.0); pq /100 ?
         return (cachedValue[pin.getAddress()]);
     }
 
