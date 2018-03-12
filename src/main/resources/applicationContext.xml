@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns="http://www.springframework.org/schema/beans"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+        http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd
+        ">
+
+    <context:property-placeholder order="99" ignore-unresolvable="false"
+                                  location="classpath*:application.properties"
+                                  system-properties-mode="ENVIRONMENT"/>
+
+    <context:annotation-config/>
+    <context:component-scan base-package="com.homebrew.io"/>
+    <context:component-scan base-package="com.homebrew.service"/>
+    <context:component-scan base-package="com.homebrew.persistance.dao"/>
+
+    <!-- ============================= -->
+    <!-- DATASOURCE                    -->
+    <!-- ============================= -->
+    <bean name="appDataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="com.mysql.jdbc.Driver" />
+        <property name="url" value="${ds.jdbc.url}" />
+        <property name="username" value="${ds.jdbc.username}" />
+        <property name="password" value="${ds.jdbc.password}" />
+    </bean>
+
+    <!-- ============================= -->
+    <!-- SESSION FACTORY               -->
+    <!-- ============================= -->
+    <bean id="sessionFactory"
+          class="org.springframework.orm.hibernate5.LocalSessionFactoryBean">
+        <property name="packagesToScan" value="com.homebrew.persistance.dto"/>
+        <property name="dataSource" ref="appDataSource"/>
+        <property name="hibernateProperties">
+            <props>
+
+                <prop key="hibernate.dialect">org.hibernate.dialect.MySQLInnoDBDialect</prop>
+                <prop key="hibernate.connection.useUnicode">true</prop>
+                <prop key="hibernate.connection.charSet">UTF-8</prop>
+
+                <prop key="hibernate.default_schema">${ds.default_schema}</prop>
+
+                <prop key="hibernate.show_sql">${ds.debug}</prop>
+                <prop key="hibernate.format_sql">${ds.debug}</prop>
+                <prop key="hibernate.generate_statistics">${ds.debug}</prop>
+                <prop key="hibernate.use_sql_comments">${ds.debug}</prop>
+
+                <prop key="configurationClass">org.hibernate.cfg.AnnotationConfiguration</prop>
+            </props>
+        </property>
+    </bean>
+
+    <bean id="transactionManager"
+          class="org.springframework.orm.hibernate5.HibernateTransactionManager">
+        <property name="sessionFactory" ref="sessionFactory"/>
+        <property name="defaultTimeout" value="${ds.timeout:5}"/>
+    </bean>
+
+    <tx:annotation-driven transaction-manager="transactionManager" proxy-target-class="true"/>
+</beans>

@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+    <title>Homebrew 1.a</title>
+    <meta charset=utf-8>
+    <meta content="IE=edge" http-equiv=X-UA-Compatible>
+    <meta content="width=device-width,initial-scale=1" name=viewport>
+
+    <link rel="stylesheet" href="css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="css/bootstrap-theme.min.css"/>
+    <link rel="stylesheet" href="js/bootstrap.min.js"/>
+
+    <style>
+        body {
+            padding: 20px;
+        }
+
+        .console {
+            height: 400px;
+            overflow: auto;
+        }
+
+        .username-msg {
+            color: orange;
+        }
+
+        .connect-msg {
+            color: green;
+        }
+
+        .disconnect-msg {
+            color: red;
+        }
+
+        .display {
+            font-size: 60px;
+        }
+        .send-msg {
+            color: #888
+        }
+    </style>
+
+
+    <script src="js/socket.io/socket.io.js"></script>
+    <script src="js/moment.min.js"></script>
+    <script src="js/jquery-1.10.1.min.js"></script>
+
+    <script src="js/justgage-1.2.2/raphael-2.1.4.min.js"></script>
+    <script src="js/justgage-1.2.2/justgage.js"></script>
+
+    <script>
+        /* Sockets I/O */
+        var analogInputSocket = io.connect('http://192.168.0.30:9092/analogInput');
+        var digitalOutputSocket = io.connect('http://192.168.0.30:9092/digitalOutput');
+        var digitalImpulseSocket = io.connect('http://192.168.0.30:9092/digitalImpulse');
+        var timerSocket = io.connect('http://192.168.0.30:9092/timer');
+
+        //var analogInputSocket = io.connect('http://192.168.1.38:9092/analogInput');
+        //var digitalOutputSocket = io.connect('http://192.168.1.38:9092/digitalOutput');
+        //var timerSocket = io.connect('http://192.168.1.38:9092/timer');
+
+        //var analogInputSocket = io.connect('http://localhost:9092/analogInput');
+        //var digitalOutputSocket = io.connect('http://localhost:9092/digitalOutput');
+        //var timerSocket = io.connect('http://localhost:9092/timer');
+
+        /* Handlers Socket I/O */
+        function connectHandler(parentId) {
+            return function () {
+                setLabelSockectIoConnected(true);
+                showAlertInfo("Client has connected to the server!", true);
+                historyOutput('<span class="connect-msg">Client has connected to the server!</span>', parentId);
+
+                cmdRefresh();
+            }
+        }
+        function analogInputMessageHandler(parentId) {
+            return function (data) {
+                historyOutput('<span class="username-msg">' + data.pinName + ' (' + data.pinIndex + '):</span> ' + data.eventValue, parentId);
+                setGgAnalogInputValue(data.pinIndex, data.eventValue);
+            }
+        }
+        function digitalOutputMessageHandler(parentId) {
+            return function (data) {
+                historyOutput('<span class="username-msg">' + data.pinName + ' (' + data.pinIndex + '):</span> ' + data.eventValue, parentId);
+                setBtnDigitalOutputValue(data.pinIndex, data.eventValue);
+            }
+        }
+        function digitalImpulseMessageHandler(parentId) {
+            return function (data) {
+                historyOutput('<span class="username-msg">' + data.pinName + ' (' + data.pinIndex + '):</span> ' + data.eventValue, parentId);
+                setGgDigitalImpulseValue(data.pinIndex, data.eventValue);
+            }
+        }
+        function timerMessageHandler(parentId) {
+            return function (data) {
+                //historyOutput('<span class="username-msg">' + data.timerStepName + ' (' + data.timerCountdown + '):</span> ', parentId);
+                setTimerValue(data.timerCountdown);
+                setStepValues(data.timerStepName, data.timerStartDate, data.timerEstimateEndDate);
+            }
+        }
+        function disconnectHandler(parentId) {
+            return function () {
+                setLabelSockectIoConnected(false);
+                showAlertInfo("The client has disconnected!", true);
+                historyOutput('<span class="disconnect-msg">The client has disconnected!</span>', parentId);
+            }
+        }
+
+        analogInputSocket.on('connect', connectHandler('#analogInput'));
+        digitalOutputSocket.on('connect', connectHandler('#digitalOutput'));
+        digitalImpulseSocket.on('connect', connectHandler('#digitalImpulse'));
+
+        analogInputSocket.on('message', analogInputMessageHandler('#analogInput'));
+        digitalOutputSocket.on('message', digitalOutputMessageHandler('#digitalOutput'));
+        digitalImpulseSocket.on('message', digitalImpulseMessageHandler('#digitalImpulse'));
+        timerSocket.on('message', timerMessageHandler('#digitalOutput'));
+
+        analogInputSocket.on('disconnect', disconnectHandler('#analogInput'));
+        digitalOutputSocket.on('disconnect', disconnectHandler('#digitalOutput'));
+        digitalImpulseSocket.on('disconnect', disconnectHandler('#digitalImpulse'));
+
+        /* Functions I/O */
+        function sendDisconnect() {
+            analogInputSocket.disconnect();
+            digitalOutputSocket.disconnect();
+            digitalImpulseSocket.disconnect();
+            timerSocket.disconnect();
+        }
+
+        /* System functions */
+        function cmdShutdown() {
+            $.ajax({
+                url: './rest/system/shutdown',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    showAlertInfo('Shutdown server', true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        function cmdRestart() {
+            $.ajax({
+                url: './rest/system/restart',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    showAlertInfo('Restart server', true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        /* Gpio functions */
+        function cmdRefresh() {
+            $.ajax({
+                url: './rest/gpioDigital/getAllDigitalPinState',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    showAlertInfo('DigitalPinState refresh', true);
+
+                    for(i in data.allPins) {
+                        setBtnDigitalOutputValue(data.allPins[i].pinIndex, data.allPins[i].currentValue);
+                    }
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+
+            $.ajax({
+                url: './rest/gpioAnalog/getAllAnalogPinShortValue',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    showAlertInfo('AnalogPinShortValue refresh', true);
+
+                    for(i in data.allPins) {
+                        setGgAnalogInputValue(data.allPins[i].pinIndex, data.allPins[i].currentValue);
+                    }
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+
+            $.ajax({
+                url: './rest/gpioDigital/getAllDigitalImpulseValue',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    showAlertInfo('DigitalImpulseValue refresh', true);
+
+                    for(i in data.allPins) {
+                        setGgDigitalImpulseValue(data.allPins[i].pinIndex, data.allPins[i].currentValue);
+                    }
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        function setPinToggle(pinIndex) {
+            $.ajax({
+                url: './rest/gpioDigital/'+pinIndex+'/setPinToggle',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(msg) {
+                    showAlertInfo(msg.message, true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        function setPinOn(pinIndex) {
+            $.ajax({
+                url: './rest/gpioDigital/'+pinIndex+'/setPinOn',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(msg) {
+                    showAlertInfo(msg.message, true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        function setPinOff(pinIndex) {
+            $.ajax({
+                url: './rest/gpioDigital/'+pinIndex+'/setPinOff',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(msg) {
+                    showAlertInfo(msg.message, true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        function resetDigitalImpulseValue(pinIndex) {
+            $.ajax({
+                url: './rest/gpioDigital/'+pinIndex+'/resetDigitalImpulseValue',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(msg) {
+                    showAlertInfo(msg.message, true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        /* Timer functions */
+        function startTimer(minutes) {
+            $.ajax({
+                url: './rest/timer/scheduleOnce/'+minutes,
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(msg) {
+                    showAlertInfo(msg.message, true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+        function pauseTimer() {
+            $.ajax({
+                url: './rest/timer/pause',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(msg) {
+                    showAlertInfo(msg.message, true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+        function resumeTimer() {
+            $.ajax({
+                url: './rest/timer/resume',
+                type: 'GET',
+                data: null,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                async: false,
+                success: function(msg) {
+                    showAlertInfo(msg.message, true);
+                },
+                error: function (request, error) {
+                    showAlertError(JSON.parse(request.responseText).message, true);
+                }
+            });
+        }
+
+        /* UI functions */
+        function historyOutput(message, parentId) {
+            var currentTime = "<span class='time'>" + moment().format('HH:mm:ss') + "</span>";
+            var element = $("<div>" + currentTime + " " + message + "</div>");
+            $(parentId + ' .console').prepend(element);
+        }
+
+        function setStepValues(stepName, stepDateBegin, stepDateEnd) {
+            var message = stepName + " from " + moment(stepDateBegin).fromNow();
+            var txtStep = $('#txtStep');
+            txtStep.html(message);
+        }
+
+        function setTimerValue(value) {
+            var currentTime = moment().startOf('day')
+                .seconds(value)
+                .format('HH:mm:ss');
+            var txtTime = $('#txtTime');
+            txtTime.html(currentTime);
+        }
+
+        function setLabelSockectIoConnected(connected) {
+            var labelSockectIoConnected = $('#labelSockectIoConnected');
+            if (connected) {
+                labelSockectIoConnected.removeClass('label-danger');
+                if (!labelSockectIoConnected.hasClass('label-success')) {
+                    labelSockectIoConnected.addClass('label-success');
+                }
+            } else {
+                labelSockectIoConnected.removeClass('label-success');
+                if (!labelSockectIoConnected.hasClass('label-danger')) {
+                    labelSockectIoConnected.addClass('label-danger');
+                }
+            }
+        }
+
+        function setBtnDigitalOutputValue(pinIndex, value) {
+            var btnDigitalOutput = $('#btnDigitalOutput0' + pinIndex);
+            if (value === 1) {
+                btnDigitalOutput.removeClass('btn-warning');
+                if (!btnDigitalOutput.hasClass('btn-success')) {
+                    btnDigitalOutput.addClass('btn-success');
+                }
+            } else {
+                btnDigitalOutput.removeClass('btn-success');
+                if (!btnDigitalOutput.hasClass('btn-warning')) {
+                    btnDigitalOutput.addClass('btn-warning');
+                }
+            }
+        }
+
+        function setGgAnalogInputValue(pinIndex, value) {
+            if (pinIndex === 0) {
+                g0.refresh(value);
+            } else if (pinIndex === 1) {
+                g1.refresh(value);
+            } else if (pinIndex === 2) {
+                g2.refresh((value/1.25)-63.8);
+            } else if (pinIndex === 3) {
+                g3.refresh(value);
+            }
+
+        }
+
+        function setGgDigitalImpulseValue(pinIndex, value) {
+            if (pinIndex === 6) {
+                g4.refresh(value);
+            }
+        }
+
+        function showAlertInfo(infoMessage, visible) {
+            var alertInfo = $("#alertInfo");
+            if (visible) {
+                alertInfo.html(infoMessage);
+                alertInfo.removeClass('hidden');
+            } else {
+                if (!alertInfo.hasClass('hidden')) {
+                    alertInfo.addClass('hidden');
+                }
+            }
+        }
+
+        function showAlertError(errorMessage, visible) {
+            var alertError = $("#alertError");
+            if (visible) {
+                alertError.html(errorMessage);
+                alertError.removeClass('hidden');
+            } else {
+                if (!alertError.hasClass('hidden')) {
+                    alertError.addClass('hidden');
+                }
+            }
+        }
+
+        function showEventLogs(visible) {
+            var eventLogs = $("#eventLogs");
+            var btnEventLogsHide = $("#btnEventLogsHide");
+            var btnEventLogsShow = $("#btnEventLogsShow");
+
+            if (visible) {
+                eventLogs.removeClass('hidden');
+                btnEventLogsHide.removeClass('hidden');
+                if (!btnEventLogsShow.hasClass('hidden')) {
+                    btnEventLogsShow.addClass('hidden');
+                }
+            } else {
+                btnEventLogsShow.removeClass('hidden');
+                if (!btnEventLogsHide.hasClass('hidden')) {
+                    btnEventLogsHide.addClass('hidden');
+                }
+                if (!eventLogs.hasClass('hidden')) {
+                    eventLogs.addClass('hidden');
+                }
+            }
+        }
+    </script>
+</head>
+
+<body>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xs-6 col-md-6">
+            <h1>Homebrew 1.a</h1>
+        </div>
+        <div class="col-xs-6 col-md-6 text-right">
+            <h4><span id="labelSockectIoConnected" class="label label-danger">I/O Connection</span></h4>
+        </div>
+    </div>
+
+    <div class="row">
+        <div id="alertInfo" class="alert alert-success hidden" onclick="showAlertInfo('', false)" role="alert">
+        </div>
+    </div>
+    <div class="row">
+        <div id="alertError" class="alert alert-danger hidden" onclick="showAlertError('', false)" role="alert">
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xs-12 col-md-12 text-right">
+            <button type="button" class="btn btn-default btn-sm" id="btnShutdown" onClick="cmdShutdown()" value="false">
+                <span class="glyphicon glyphicon-off" aria-hidden="true"></span> Shutdown
+            </button>
+            <button type="button" class="btn btn-default btn-sm" id="btnRestart" onClick="cmdRestart()" value="false">
+                <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span> Restart
+            </button>
+            <button type="button" class="btn btn-default btn-sm" id="btnRefresh" onClick="cmdRefresh()" value="false">
+                <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> Refresh
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xs-6 col-md-6">
+            <h3>Datas</h3>
+        </div>
+    </div>
+    <div class="row">
+        <!-- div class="col-xs-12 col-md-6 col-lg-3">
+            <div id="ggAnalogInput00" style="width:100%;align-content: center"></div>
+        </div>
+        <div class="col-xs-12 col-md-6 col-lg-3">
+            <div id="ggAnalogInput01" style="width:100%;align-content: center"></div>
+        </div -->
+        <div class="col-xs-12 col-md-6 col-lg-3">
+            <div id="ggAnalogInput02" style="width:100%;align-content: center"></div>
+        </div>
+        <!-- div class="col-xs-12 col-md-6 col-lg-3">
+            <div id="ggAnalogInput03" style="width:100%;align-content: center"></div>
+        </div -->
+
+        <div class="col-xs-12 col-md-6 col-lg-3">
+            <div id="ggDigitalImpulse00" style="width:100%;align-content: center"></div>
+            <button type="button" class="btn btn-default btn-sm" id="btnResetDigitalImpulseValue" onClick="resetDigitalImpulseValue(6)" value="false">
+                <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> Reset
+            </button>
+        </div>
+
+
+    </div>
+
+    <div class="row">
+        <div class="col-xs-6 col-md-6">
+            <h3>Timer</h3>
+        </div>
+        <div class="well col-xs-12 col-md-12 text-center">
+            <div class="">
+                <span id="txtStep"></span>
+            </div>
+            <div class="display ">
+                <span id="txtTime">00:00:00</span>
+            </div>
+            <div>
+                <button type="button" class="btn btn-default btn-sm" id="btnTimeStart" onClick="startTimer(3)" value="false">
+                    <span class="glyphicon glyphicon-play" aria-hidden="true"></span> Start
+                </button>
+                <button type="button" class="btn btn-default btn-sm" id="btnTimePause" onClick="pauseTimer()" value="false">
+                    <span class="glyphicon glyphicon-pause" aria-hidden="true"></span> Pause
+                </button>
+                <button type="button" class="btn btn-default btn-sm" id="btnTimeResume" onClick="resumeTimer()" value="false">
+                    <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span> Resume
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xs-6 col-md-6">
+            <h3>Commands</h3>
+        </div>
+    </div>
+    <form class="well form-inline" onsubmit="return false;">
+        <div class="row">
+            <div class="col-xs-12 col-md-6">
+                <button type="button" id="btnDigitalOutput00" onClick="setPinToggle(0)" class="btn btn-warning" value="false" style="width: 100%;margin: 5px"><strong>Mélangeur</strong></button>
+            </div>
+            <div class="col-xs-12 col-md-6">
+                <button type="button" id="btnDigitalOutput01" onClick="setPinToggle(1)" class="btn btn-warning" value="false" style="width: 100%;margin: 5px"><strong>Alim. remplissage</strong></button>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-xs-12 col-md-6">
+                <button type="button" id="btnDigitalOutput02" onClick="setPinToggle(2)" class="btn btn-warning" value="false" style="width: 100%;margin: 5px"><strong>Chauffe</strong></button>
+            </div>
+            <div class="col-xs-12 col-md-6">
+                <button type="button" id="btnDigitalOutput03" onClick="setPinToggle(3)" class="btn btn-warning" value="false" style="width: 100%;margin: 5px"><strong>Alim. refroidissement</strong></button>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-xs-12 col-md-6">
+                <button type="button" id="btnDigitalOutput04" onClick="setPinToggle(4)" class="btn btn-warning" value="false" style="width: 100%;margin: 5px"><strong>Gyrophare</strong></button>
+            </div>
+        </div>
+    </form>
+
+
+    <div class="row">
+        <div class="col-xs-6 col-md-6">
+            <h3>Events logs&nbsp;&nbsp;<span id="btnEventLogsShow" class="glyphicon glyphicon-plus small" onclick="showEventLogs(true)" aria-hidden="true"></span><span id="btnEventLogsHide" class="glyphicon glyphicon-minus small hidden" onclick="showEventLogs(false)" aria-hidden="true"></span></h3>
+        </div>
+        <div class="col-xs-6 col-md-6 text-right">
+
+        </div>
+    </div>
+    <div id="eventLogs" class="hidden">
+        <div id="analogInput">
+            <h4>AnalogInput</h4>
+            <div class="console well" style="height: 250px;">
+            </div>
+        </div>
+
+        <div id="digitalOutput">
+            <h4>DigitalOutput</h4>
+            <div class="console well" style="height: 250px;">
+            </div>
+        </div>
+
+        <div id="digitalImpulse">
+            <h4>DigitalImpulse</h4>
+            <div class="console well" style="height: 250px;">
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+<script>
+    /* Gauges initialize
+    var g0 = new JustGage({
+        id: 'ggAnalogInput00',
+        value: 0,
+        min: 0,
+        max: 254,
+        title: 'I/O 00',
+        titleFontColor: '#000000',
+        symbol: '°',
+        gaugeWidthScale: 0.9,
+        shadowOpacity: 0.6,
+        levelColorsGradient: false
+    });
+
+    var g1 = new JustGage({
+        id: 'ggAnalogInput01',
+        value: 0,
+        min: 0,
+        max: 100,
+        title: 'I/O 01',
+        titleFontColor: '#000000',
+        symbol: '%',
+        gaugeWidthScale: 0.9,
+        shadowOpacity: 0.6,
+        levelColorsGradient: false
+    });
+     */
+    var g2 = new JustGage({
+        id: 'ggAnalogInput02',
+        value: 0,
+        min: 0,
+        max: 120,
+        title: 'Température',
+        symbol: '°',
+        titleFontColor: '#000000',
+        gaugeWidthScale: 0.9,
+        shadowOpacity: 0.6,
+        levelColorsGradient: false
+    });
+    /*
+    var g3 = new JustGage({
+        id: 'ggAnalogInput03',
+        value: 0,
+        min: 0,
+        max: 254,
+        title: 'I/O 03',
+        titleFontColor: '#000000',
+        gaugeWidthScale: 0.9,
+        shadowOpacity: 0.6,
+        levelColorsGradient: false
+    });
+     */
+    var g4 = new JustGage({
+        id: 'ggDigitalImpulse00',
+        value: 0,
+        min: 0,
+        max: 1000,
+        title: 'Eau',
+        symbol: 'cl',
+        titleFontColor: '#000000',
+        gaugeWidthScale: 0.9,
+        shadowOpacity: 0.6,
+        levelColorsGradient: false
+    });
+
+</script>
+</html>
